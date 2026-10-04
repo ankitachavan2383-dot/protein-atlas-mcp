@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Protein Research</title>
+<script src="https://3dmol.org/build/3Dmol-min.js"></script>
+<style>
+:root{--bg:#f7f8fa;--card:#fff;--tx:#1b1f24;--mu:#6b7280;--ac:#2563eb;--bd:#e5e7eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#171c23;--tx:#e6e9ee;--mu:#8b95a3;--ac:#60a5fa;--bd:#2a313b}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{background:var(--card);border-bottom:1px solid var(--bd);padding:18px 20px}
+main{max-width:960px;margin:0 auto;padding:20px}
+h1{margin:0 0 10px;font-size:20px}h2{font-size:17px;margin:0 0 8px}a{color:var(--ac)}
+form{display:flex;gap:8px;max-width:960px;margin:0 auto}
+input,textarea,button{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:9px 12px}
+input{flex:1}button{background:var(--ac);color:#fff;border:0;cursor:pointer}
+.chips{max-width:960px;margin:8px auto 0;color:var(--mu);font-size:13px}
+.chips a{margin-right:10px;cursor:pointer}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{background:var(--card);color:var(--mu);border:1px solid var(--bd)}
+.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);font-size:14px}
+th{color:var(--mu);font-weight:500}
+.mu{color:var(--mu)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat b{display:block;font-size:20px}
+.bar{background:var(--bd);border-radius:4px;height:8px;min-width:80px}.bar i{display:block;height:8px;border-radius:4px;background:var(--ac)}
+.seq{font:12px/1.6 ui-monospace,monospace;word-break:break-all;max-height:160px;overflow:auto}
+.err{color:#dc2626}textarea{width:100%;height:90px;font-family:ui-monospace,monospace}
+.row{display:flex;align-items:center;gap:8px;margin:3px 0}.row span:first-child{width:130px;font-size:14px}
+header{background:linear-gradient(135deg,#1e3a8a,#6d28d9);color:#fff;border:0}
+header h1{font-size:26px}header .chips,header .chips a{color:#e2e8f0}
+.card{box-shadow:0 1px 4px rgba(0,0,0,.07)}.chip{background:var(--bd);border-radius:99px;padding:1px 9px;font-size:12px;white-space:nowrap}
+tr[onclick]:hover{background:var(--bg)}
+</style></head><body>
+<header><h1>🧬 Protein Research</h1>
+<form id="f"><input id="q" placeholder="Gene symbol, UniProt accession, or protein name (e.g. TP53, P04637)" autofocus><button>Search</button></form>
+<div class="chips">Try: <a>TP53</a><a>EGFR</a><a>KRAS</a><a>APOE</a><a>BRCA1</a></div></header>
+<main><div id="out"></div></main>
+<script>
+const $=s=>document.querySelector(s),out=$('#out');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const bar=(v,m=1)=>`<div class="bar"><i style="width:${Math.min(100,v/m*100)}%"></i></div>`;
+const none=t=>`<p class="mu">No ${t} found.</p>`;
+async function api(u,o){const r=await fetch(u,o),j=await r.json();if(!r.ok)throw new Error(j.error||'Request failed');return j}
+let R=null,tab='Overview';
+
+function stats(s){
+  if(!s||!s.length)return none('sequence statistics');
+  const c=s.amino_acid_composition||{},mx=Math.max(...Object.values(c),1);
+  return `<div class="grid">
+   <div class="card stat"><span class="mu">Length</span><b>${s.length} aa</b></div>
+   <div class="card stat"><span class="mu">Mol. weight</span><b>${((s.molecular_weight||{}).molecular_weight_da/1000||0).toFixed(1)} kDa</b></div>
+   <div class="card stat"><span class="mu">pI</span><b>${(s.isoelectric_point||{}).isoelectric_point??'-'}</b></div>
+   <div class="card stat"><span class="mu">GRAVY</span><b>${(s.hydrophobicity||{}).gravy??'-'}</b><span class="mu">${(s.hydrophobicity||{}).interpretation||''}</span></div></div>
+   <h2>Composition (%)</h2>${Object.entries(c).map(([a,v])=>`<div class="row"><span>${a}</span>${bar(v,mx)}<span>${v}</span></div>`).join('')}`;
+}
+
+const views={
+ Overview:r=>{const b=r.basic_info;return `<div class="card"><h2>${esc(b.protein_name)}</h2>
+  <p class="mu">${esc((b.gene_names||[]).join(', '))} · ${esc(b.organism)} · <a target="_blank" href="https://www.uniprot.org/uniprotkb/${b.accession}">${b.accession}</a> · ${b.reviewed?'Reviewed (Swiss-Prot)':'Unreviewed'}</p>
+  <p>${esc(r.summary)}</p>${b.function?`<h2>Function</h2><p>${esc(b.function)}</p>`:''}</div>`},
+ Domains:r=>`<div class="card">${r.domains.length?`<table><tr><th>Name</th><th>ID</th><th>Source</th><th>Range</th></tr>${r.domains.map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.id)}</td><td>${esc(d.source_database)}</td><td>${d.start}–${d.end}</td></tr>`).join('')}</table>`:none('domains')}</div>`,
+ Structure:r=>{const s=r.structure;return `<div class="card"><h2>AlphaFold</h2>${s.alphafold_model_id?`<p>${esc(s.alphafold_model_id)} · <a target="_blank" href="${s.alphafold_cif_url}">Download CIF</a> · <a target="_blank" href="https://alphafold.ebi.ac.uk/entry/${r.basic_info.accession}">View 3D</a></p>`:none('AlphaFold model')}
+  <h2>Experimental (PDB)</h2>${(s.experimental_pdb_ids||[]).length?`<p>${s.experimental_pdb_ids.map(i=>`<a target="_blank" href="https://www.rcsb.org/structure/${i}">${i}</a>`).join(' · ')}</p><p class="mu">${esc(s.primary_pdb_title)} · ${esc(s.primary_pdb_method)} · ${s.primary_pdb_resolution_angstrom??'?'} Å</p>`:none('PDB structures')}</div>`},
+ Interactions:r=>`<div class="card">${r.interactions.length?`<table><tr><th>Partner</th><th>Confidence</th><th></th></tr>${r.interactions.map(i=>`<tr><td>${esc(i.partner)}</td><td>${i.confidence}</td><td>${bar(i.confidence)}</td></tr>`).join('')}</table>`:none('interactions')}</div>`,
+ Pathways:r=>`<div class="card">${r.pathways.length?r.pathways.map(p=>`<div><a target="_blank" href="${p.url}">${esc(p.name)}</a> <span class="mu">${p.id}</span></div>`).join(''):none('pathways')}</div>`,
+ Diseases:r=>`<div class="card"><h2>Open Targets</h2>${r.diseases.length?`<table>${r.diseases.map(d=>`<tr><td>${esc(d.disease_name)}</td><td>${d.association_score}</td><td>${bar(d.association_score)}</td></tr>`).join('')}</table>`:none('diseases')}</div>
+  <div class="card"><h2>ClinVar variants</h2>${r.clinvar_variants.length?r.clinvar_variants.map(v=>`<div><a target="_blank" href="${v.url}">${esc(v.title)}</a> <span class="mu">${esc(v.clinical_significance||'')}</span></div>`).join(''):none('variants')}</div>`,
+ Publications:r=>`<div class="card">${r.publications.length?r.publications.map(p=>`<p><a target="_blank" href="${p.url}">${esc(p.title)}</a><br><span class="mu">${esc(p.journal||'')} · ${esc(p.pub_date||'')}</span></p>`).join(''):none('publications')}</div>`,
+ '3D & Sites':r=>`<div class="card"><div id="v3d" style="height:440px;position:relative"></div><p class="mu">AlphaFold confidence: <b style="color:#0053d6">very high</b> · <b style="color:#65cbf3">high</b> · <b style="color:#e0b800">low</b> · <b style="color:#ff7d45">very low</b>. Click a site below to highlight it.</p></div><div class="card" id="sites">Loading site data…</div>`,
+ Sequence:r=>`<div class="card">${stats(r.sequence_stats)}<h2>Sequence</h2><div class="seq">${esc(r.sequence.sequence)}</div></div>
+  <div class="card"><h2>Analyze your own sequence</h2><textarea id="seq" placeholder="Paste a sequence or FASTA"></textarea><p><button id="go">Analyze</button></p><div id="res"></div></div>`
+};
+
+let V,base;
+function hl(a,b){const r=a===b?''+a:a+'-'+b;V.setStyle({},base);V.setStyle({resi:[r]},{cartoon:{color:'#e11d48'},stick:{colorscheme:'redCarbon'}});V.zoomTo({resi:[r]});V.render()}
+async function init3d(){
+ const acc=R.basic_info.accession,box=$('#v3d'),sd=$('#sites');
+ V=$3Dmol.createViewer(box,{backgroundColor:matchMedia('(prefers-color-scheme:dark)').matches?'#171c23':'#ffffff'});
+ base={cartoon:{colorfunc:a=>a.b>90?'#0053d6':a.b>70?'#65cbf3':a.b>50?'#ffdb13':'#ff7d45'}};
+ try{const r=await fetch('/api/model/'+acc);if(!r.ok)throw 0;V.addModel(await r.text(),'pdb');V.setStyle({},base);V.zoomTo();V.render()}
+ catch(e){box.innerHTML='<p class="mu" style="padding:16px">No AlphaFold model available.</p>'}
+ try{const s=await api('/api/sites/'+acc),f=s.features.filter(x=>x.type!=='Domain');
+  sd.innerHTML=`<h2>Functional sites (UniProt curated)</h2>${f.length?`<table><tr><th>Type</th><th>Residues</th><th>Detail</th></tr>${f.map(x=>`<tr style="cursor:pointer" onclick="hl(${x.start},${x.end})"><td><span class="chip">${esc(x.type)}</span></td><td>${x.start}${x.end>x.start?'–'+x.end:''}</td><td>${esc(x.description)}</td></tr>`).join('')}</table>`:none('curated sites')}
+  <h2 style="margin-top:16px">Ligand-contact pockets (PDB, within 4.5 Å)</h2>${s.pockets.length?s.pockets.map(p=>`<p><b>${esc(p.ligand)}</b> in <a target="_blank" href="https://www.rcsb.org/structure/${p.pdb_id}">${p.pdb_id}</a> chain ${esc(p.chain)}<br><span class="mu">${esc(p.residues.join(' '))}</span></p>`).join('')+'<p class="mu">Residue numbers follow the PDB file and may differ from UniProt numbering.</p>':none('ligand-bound structures')}`}
+ catch(e){sd.innerHTML=`<p class="err">${esc(e.message)}</p>`}
+}
+function render(){
+  out.innerHTML=`<div class="tabs">${Object.keys(views).map(t=>`<button class="${t===tab?'on':''}" data-t="${t}">${t}</button>`).join('')}</div><div id="view">${views[tab](R)}</div>`;
+  out.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+  if(tab==='3D & Sites')init3d();const go=$('#go');if(go)go.onclick=async()=>{try{$('#res').innerHTML=stats(await api('/api/sequence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sequence:$('#seq').value})}))}catch(e){$('#res').innerHTML=`<p class="err">${esc(e.message)}</p>`}};
+}
+
+async function load(q){
+  out.innerHTML='<div class="card mu">Loading from UniProt, AlphaFold, PDB, STRING, Reactome, Open Targets, ClinVar, PubMed…</div>';
+  try{R=await api('/api/report?q='+encodeURIComponent(q));tab='Overview';render()}
+  catch(e){out.innerHTML=`<div class="card err">${esc(e.message)}</div>`}
+}
+async function find(q){
+  try{const h=await api('/api/search?q='+encodeURIComponent(q));
+   out.innerHTML=`<div class="card"><h2>Results</h2>${h.length?h.map(x=>`<p><a href="#" data-a="${x.accession}">${esc(x.protein_name)}</a> <span class="mu">${esc((x.gene_names||[]).join(', '))} · ${x.accession}</span></p>`).join(''):none('matches')}</div>`;
+   out.querySelectorAll('[data-a]').forEach(a=>a.onclick=e=>{e.preventDefault();$('#q').value=a.dataset.a;load(a.dataset.a)})}
+  catch(e){out.innerHTML=`<div class="card err">${esc(e.message)}</div>`}
+}
+$('#f').onsubmit=e=>{e.preventDefault();const q=$('#q').value.trim();if(!q)return;/^[A-Za-z0-9-]{2,10}$/.test(q)?load(q):find(q)};
+document.querySelectorAll('.chips a').forEach(a=>a.onclick=()=>{$('#q').value=a.textContent;load(a.textContent)});
+</script></body></html>

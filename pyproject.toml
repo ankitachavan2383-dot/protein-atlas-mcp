@@ -1,0 +1,29 @@
+[project]
+name = "protein-research-mcp"
+version = "0.1.0"
+description = "MCP server exposing protein research tools (UniProt, AlphaFold, PDB, InterPro, STRING, Reactome, Open Targets, ClinVar, PubMed, Europe PMC)"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.7.0",
+    "biopython>=1.83",
+    "cachetools>=5.3.3",
+    "python-dotenv>=1.0.1",
+    "tenacity>=8.2.3",
+    "fastapi >=0.110.0",
+    "uvicorn >=0.23.0"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2.0", "pytest-asyncio>=0.23.7", "ruff>=0.5.0"]
+
+[tool.ruff]
+line-length = 125
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
